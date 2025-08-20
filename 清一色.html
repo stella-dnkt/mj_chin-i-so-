@@ -3,244 +3,164 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>清一色 テンパイ・何待ちクイズ（萬子のみ・安定版）</title>
+<title>清一色 テンパイ・何待ちクイズ（萬子・モバイル対応・安定版）</title>
 <style>
-  :root { --w:48px; --h:64px; }
-  * { box-sizing: border-box; }
-  body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; margin:20px; display:flex; flex-direction:column; gap:14px; align-items:center; }
-  h1 { font-size:20px; margin:0 0 6px; }
-  .wrap { display:flex; gap:18px; flex-wrap:wrap; align-items:flex-start; }
-  .panel { border:1px solid #ccc; border-radius:12px; padding:12px; background:#fafafa; box-shadow:0 1px 2px rgba(0,0,0,.04); }
-  .row { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
-  .tiles { display:flex; gap:6px; flex-wrap:wrap; align-items:flex-start; }
+  :root{ --w: clamp(44px, 10vw, 64px); --h: calc(var(--w) * 1.45); }
+  *{ box-sizing: border-box; }
+  body{ font-family: system-ui, -apple-system, "Segoe UI", sans-serif; margin:12px; text-align:center; }
+  h2{ font-size: clamp(16px, 4.5vw, 22px); margin: 0.2em 0 0.6em; }
+  .board{ display:flex; justify-content:center; flex-wrap:wrap; gap:6px; margin: 0.6em; }
+  .choices{ display:flex; justify-content:center; flex-wrap:wrap; gap:8px; margin: 0.6em; }
 
-  /* 牌の見た目（数字黒＋萬赤／縦書き） */
-  .pai {
+  /* 牌：数字は黒、萬は赤。縦書き。タップ領域は>=44px確保 */
+  .tile{
     width: var(--w); height: var(--h);
-    border-radius: 6px;
-    background: linear-gradient(#fff, #f6f6f6);
-    border: 1px solid #bdbdbd;
+    border: 2px solid #8a8a8a; border-radius: 6px; background:#fff;
     box-shadow: inset 0 0 0 2px #fff, 0 1px 2px rgba(0,0,0,.06);
     display:flex; align-items:center; justify-content:center;
     writing-mode: vertical-rl; text-orientation: upright;
+    font-size: clamp(18px, 5vw, 22px); font-weight: 800; color:#000;
+    user-select: none;
   }
-  .pai .kanji { font-family:"Hiragino Mincho ProN","Yu Mincho","Noto Serif CJK JP",serif; font-weight:700; font-size:22px; color:#000; line-height:1; }
-  .pai .man   { font-family:"Hiragino Mincho ProN","Yu Mincho","Noto Serif CJK JP",serif; font-weight:700; font-size:22px; color:#c62828; line-height:1; }
-  .pai.small { width:40px; height:54px; }
-  .pai.mark  { outline:3px solid #ff9800; outline-offset:2px; }
+  .tile .man{ color:#c62828; }
+  .choices .tile{ cursor:pointer; }
+  .choices .selected{ outline: 3px solid #1976d2; outline-offset: 2px; }
 
-  .btn { padding:10px 14px; border-radius:12px; border:1px solid #bbb; background:#f7f7f7; font-weight:800; cursor:pointer; }
-  .answers { display:flex; gap:8px; flex-wrap:wrap; }
-  .ans { border:none; background:transparent; padding:0; cursor:pointer; }
-  .ans .pai { transition: transform .05s ease, outline-color .1s; }
-  .ans.selected .pai { outline:3px solid #1976d2; outline-offset:2px; transform: translateY(-1px); }
-  .ans.correct  .pai { outline:3px solid #2e7d32; outline-offset:2px; }
-  .ans.wrong    .pai { outline:3px solid #d32f2f; outline-offset:2px; }
+  button{ padding:10px 14px; border-radius:12px; border:1px solid #777; background:#f7f7f7; font-weight:800; font-size:clamp(14px,3.4vw,16px); }
+  #result{ margin: .8rem 0; font-weight:800; }
+  .controls{ display:flex; gap:12px; align-items:center; justify-content:center; flex-wrap:wrap; margin:6px 0 2px; font-size:clamp(12px,3.2vw,14px); }
 
-  .muted { opacity:.75; }
-  .score { font-weight:800; }
-  .small { font-size:12px; color:#666; }
-  #msg.error { color:#d32f2f; font-weight:700; }
+  /* UD（高コントラスト）モード */
+  .ud .tile{ border-color:#000; box-shadow:none; }
+  .ud .choices .selected{ outline-width:4px; }
+  .ud button{ border-color:#000; }
+
+  #err{ color:#d32f2f; font-weight:700; font-size:12px; margin-top:6px; }
 </style>
 </head>
 <body>
-  <h1>清一色 テンパイ・何待ちクイズ（<span class="muted">萬子のみ</span>）</h1>
-
-  <div class="panel row">
-    <label><input type="checkbox" id="allowStd" checked /> 面子手OK</label>
-    <label><input type="checkbox" id="allowChiitoi" /> 七対子OK</label>
+  <h2>清一色 テンパイ・何待ちクイズ（萬子のみ）</h2>
+  <div id="problem" class="board" aria-label="問題の手牌"></div>
+  <div id="choices" class="choices" aria-label="解答候補"></div>
+  <div style="display:flex; gap:8px; justify-content:center; flex-wrap:wrap;">
+    <button type="button" id="btnAnswer">解答する (Enter)</button>
+    <button type="button" id="btnReveal">答えを表示</button>
+    <button type="button" id="btnNext">次の問題 (N)</button>
   </div>
-
-  <div class="wrap">
-    <div class="panel" style="min-width:380px;">
-      <div class="row"><strong>問題 <span id="qno">1</span></strong>　<span class="score">正解 <span id="good">0</span>/<span id="total">0</span></span></div>
-      <div class="row small">下の13枚でテンパイ。アガれる牌（複数可）を選んで「解答する」。</div>
-      <div id="hand" class="tiles" style="margin:6px 0 8px;"></div>
-
-      <div class="answers" id="answers"></div>
-      <div class="row" style="margin-top:10px;">
-        <button type="button" class="btn" id="submit">解答する (Enter)</button>
-        <button type="button" class="btn" id="reveal">答えを表示</button>
-        <button type="button" class="btn" id="next">次の問題 (N)</button>
-      </div>
-      <div class="row small muted" id="msg">—</div>
-    </div>
-
-    <div class="panel" style="min-width:260px;">
-      <div class="row"><strong>正解の待ち</strong></div>
-      <div id="waits" class="tiles" style="min-height:70px;"></div>
-      <div class="row small">デバッグ</div>
-      <pre id="debug" class="small" style="margin:0;">—</pre>
-    </div>
+  <div class="controls">
+    <label>サイズ: <input id="sizeRange" type="range" min="36" max="80" step="1" value="0"> <span id="sizeLabel">自動</span></label>
+    <label><input id="udToggle" type="checkbox"> UDモード（高コントラスト）</label>
   </div>
+  <div id="result" aria-live="polite"></div>
+  <div id="err" aria-live="polite"></div>
 
 <script>
-(()=> {
-  // DOM
-  const allowStd    = document.getElementById('allowStd');
-  const allowChiitoi = document.getElementById('allowChiitoi');
-  const handEl = document.getElementById('hand');
-  const answersEl = document.getElementById('answers');
-  const waitsEl = document.getElementById('waits');
-  const msgEl = document.getElementById('msg');
-  const debugEl = document.getElementById('debug');
-  const qnoEl = document.getElementById('qno');
-  const goodEl = document.getElementById('good');
-  const totalEl = document.getElementById('total');
-  const submitBtn = document.getElementById('submit');
-  const revealBtn = document.getElementById('reveal');
-  const nextBtn = document.getElementById('next');
+(() => {
+  // ===== 安全策：エラーはUIに表示 =====
+  const errEl = document.getElementById('err');
+  window.onerror = (m, s, l, c, e) => { errEl.textContent = 'エラー: ' + m; console.error(m, s, l, c, e); };
 
-  // 例外は画面に出す
-  window.onerror = (m,s,l,c,e)=>{ msgEl.textContent = 'エラー: '+m; msgEl.classList.add('error'); console.error(m,s,l,c,e); };
+  // ===== DOM =====
+  const problemEl = document.getElementById('problem');
+  const choicesEl = document.getElementById('choices');
+  const resultEl  = document.getElementById('result');
+  const btnAnswer = document.getElementById('btnAnswer');
+  const btnReveal = document.getElementById('btnReveal');
+  const btnNext   = document.getElementById('btnNext');
+  const sizeRange = document.getElementById('sizeRange');
+  const sizeLabel = document.getElementById('sizeLabel');
+  const udToggle  = document.getElementById('udToggle');
 
-  const NUM_KANJI = ['','一','二','三','四','五','六','七','八','九'];
+  const NUMS = ['一','二','三','四','五','六','七','八','九'];
 
-  // 状態
-  let counts13 = Array(10).fill(0); // 1..9 合計13
+  // ===== 状態 =====
+  let problemCounts = Array(10).fill(0); // 1..9 合計13
   let waits = new Set();
-  let qno=0, good=0, total=0;
-  let revealed=false;
+  let selected = new Set();
 
-  // 牌 DOM
-  function pai(num, small=false){
-    const d = document.createElement('div'); d.className = 'pai'+(small?' small':'');
-    const k = document.createElement('span'); k.className='kanji'; k.textContent = NUM_KANJI[num]||'?';
-    const m = document.createElement('span'); m.className='man';   m.textContent = '萬';
-    d.appendChild(k); d.appendChild(m);
+  // ===== 牌DOM =====
+  function tileNode(n){
+    const d = document.createElement('div'); d.className = 'tile';
+    d.innerHTML = `${NUMS[n-1]}<span class="man">萬</span>`;
     return d;
   }
 
-  // 描画
-  function renderTilesFromCounts(container, cnt){
-    container.innerHTML = '';
+  // ===== レンダリング =====
+  function renderHand(){
+    problemEl.innerHTML='';
+    for(let i=1;i<=9;i++) for(let k=0;k<problemCounts[i];k++) problemEl.appendChild(tileNode(i));
+  }
+  function renderChoices(){
+    choicesEl.innerHTML='';
     for(let i=1;i<=9;i++){
-      for(let k=0;k<(cnt[i]||0);k++) container.appendChild(pai(i));
+      const btn = document.createElement('button'); btn.type='button'; btn.className='tile'; btn.dataset.num=i;
+      btn.innerHTML = `${NUMS[i-1]}<span class="man">萬</span>`;
+      btn.addEventListener('click', ()=>{ if(selected.has(i)){ selected.delete(i); btn.classList.remove('selected'); } else { selected.add(i); btn.classList.add('selected'); } });
+      choicesEl.appendChild(btn);
     }
   }
-  function renderWaits(show){
-    waitsEl.innerHTML=''; if(!show) return;
-    [...waits].sort((a,b)=>a-b).forEach(n=>{ const d=pai(n); d.classList.add('mark'); waitsEl.appendChild(d); });
-  }
 
-  // 和了判定（清一色前提）
-  const sumArr = a=>a.reduce((x,y)=>x+y,0);
+  // ===== 役判定（清一色 1スーツ） =====
+  const sum = a=>a.reduce((x,y)=>x+y,0);
   function canMentsu(cnt){
     let i=1; while(i<=9 && cnt[i]===0) i++; if(i>9) return true;
     if(cnt[i]>=3){ cnt[i]-=3; if(canMentsu(cnt)){ cnt[i]+=3; return true; } cnt[i]+=3; }
-    if(i<=7 && cnt[i+1]>0 && cnt[i+2]>0){
-      cnt[i]--; cnt[i+1]--; cnt[i+2]--;
-      if(canMentsu(cnt)){ cnt[i]++; cnt[i+1]++; cnt[i+2]++; return true; }
-      cnt[i]++; cnt[i+1]++; cnt[i+2]++;
-    }
+    if(i<=7 && cnt[i+1]>0 && cnt[i+2]>0){ cnt[i]--; cnt[i+1]--; cnt[i+2]--; if(canMentsu(cnt)){ cnt[i]++; cnt[i+1]++; cnt[i+2]++; return true; } cnt[i]++; cnt[i+1]++; cnt[i+2]++; }
     return false;
   }
-  function isAgariStd(cnt){ // 14枚
-    if(sumArr(cnt)!==14) return false;
-    for(let j=1;j<=9;j++){
-      if(cnt[j]>=2){ cnt[j]-=2; if(canMentsu(cnt)){ cnt[j]+=2; return true; } cnt[j]+=2; }
-    }
-    return false;
-  }
-  function isChiitoi(cnt){
-    if(sumArr(cnt)!==14) return false;
-    let pairs=0; for(let i=1;i<=9;i++){ if(cnt[i]===2) pairs++; else if(cnt[i]===0){} else return false; }
-    return pairs===7;
-  }
-  function waitsFor(c13, stdOK, chiitoiOK){
-    const w=new Set(); if(sumArr(c13)!==13) return w;
-    for(let t=1;t<=9;t++){
-      if(c13[t]===4) continue; // 5枚目は不可
-      const tmp=c13.slice(); tmp[t]++;
-      if((stdOK && isAgariStd(tmp.slice())) || (chiitoiOK && isChiitoi(tmp.slice()))) w.add(t);
-    }
-    return w;
+  function isAgariStd(cnt){ if(sum(cnt)!==14) return false; for(let j=1;j<=9;j++){ if(cnt[j]>=2){ cnt[j]-=2; if(canMentsu(cnt)){ cnt[j]+=2; return true; } cnt[j]+=2; } } return false; }
+  function isChiitoi(cnt){ if(sum(cnt)!==14) return false; let p=0; for(let i=1;i<=9;i++){ if(cnt[i]===2) p++; else if(cnt[i]!==0) return false; } return p===7; }
+  function waitsFor(c13){ const w=new Set(); if(sum(c13)!==13) return w; for(let t=1;t<=9;t++){ if(c13[t]===4) continue; const tmp=c13.slice(); tmp[t]++; if(isAgariStd(tmp.slice()) || isChiitoi(tmp.slice())) w.add(t); } return w; }
+
+  // ===== 問題生成（14枚アガリ→1枚抜き） =====
+  function randCounts14(){ const c=Array(10).fill(0); while(sum(c)<14){ const i=1+Math.floor(Math.random()*9); if(c[i]<4) c[i]++; } return c; }
+  function randAgari14(){ for(let t=0;t<40000;t++){ const c=randCounts14(); if(isAgariStd(c.slice()) || isChiitoi(c.slice())) return c; } return null; }
+  function makeProblem(){
+    const agari = randAgari14();
+    if(!agari){ // フォールバック（七対子テンパイ）
+      const fb = Array(10).fill(0); [1,2,3,4,5,6].forEach(i=>fb[i]=2); fb[7]=1; problemCounts=fb; waits=new Set([7]); return; }
+    let idx; do{ idx=1+Math.floor(Math.random()*9); } while(agari[idx]===0);
+    agari[idx]--; problemCounts=agari; waits=waitsFor(problemCounts.slice()); if(waits.size===0) return makeProblem();
   }
 
-  // 出題（14枚の和了手→1枚抜き）
-  function randCounts14(){
-    const c = Array(10).fill(0);
-    while(sumArr(c)<14){
-      const i = 1 + Math.floor(Math.random()*9);
-      if(c[i]<4) c[i]++;
-    }
-    return c;
-  }
-  function randAgari14(stdOK, chiitoiOK){
-    for(let tries=0; tries<40000; tries++){
-      const c = randCounts14();
-      if((stdOK && isAgariStd(c.slice())) || (chiitoiOK && isChiitoi(c.slice()))) return c;
-    }
-    return null;
-  }
-  function makeQuestion(){
-    const agari = randAgari14(allowStd.checked, allowChiitoi.checked);
-    if(!agari){
-      // フォールバック（確実にテンパイ）：1〜6を2枚ずつ＋7を1枚 → 7待ち
-      const fb = Array(10).fill(0); [1,2,3,4,5,6].forEach(i=>fb[i]=2); fb[7]=1;
-      counts13 = fb; waits = new Set([7]); return;
-    }
-    let idx; do{ idx = 1 + Math.floor(Math.random()*9); } while(agari[idx]===0);
-    agari[idx]--;
-    counts13 = agari;
-    waits = waitsFor(counts13.slice(), allowStd.checked, allowChiitoi.checked);
-    if(waits.size===0) return makeQuestion(); // 念のため
-  }
-
-  function drawQuestion(){
-    qno++; total++; qnoEl.textContent=String(qno); totalEl.textContent=String(total);
-    revealed=false; msgEl.textContent='—'; msgEl.classList.remove('error');
-    renderTilesFromCounts(handEl, counts13);
-    renderWaits(false);
-
-    // 回答（1〜9）複数選択
-    answersEl.innerHTML='';
-    for(let i=1;i<=9;i++){
-      const btn = document.createElement('button'); btn.type='button'; btn.className='ans'; btn.dataset.num=String(i);
-      btn.appendChild(pai(i,true));
-      btn.addEventListener('click', ()=> btn.classList.toggle('selected'));
-      answersEl.appendChild(btn);
-    }
-
-    debugEl.textContent = '手牌: '+counts13.slice(1).join(', ')+'\n待ち: (非表示)';
-  }
-
+  // ===== 判定 =====
   function judge(){
-    if(revealed) return;
-    const chosen = new Set([...answersEl.children].filter(b=>b.classList.contains('selected')).map(b=>+b.dataset.num));
-    const pick=[...chosen].sort((a,b)=>a-b), ans=[...waits].sort((a,b)=>a-b);
-    const correctAll = JSON.stringify(pick)===JSON.stringify(ans);
-    if(correctAll){ good++; goodEl.textContent=String(good); msgEl.textContent='🟢 完全正解！'; }
+    const pick=[...selected].sort((a,b)=>a-b).join(',');
+    const ans=[...waits].sort((a,b)=>a-b).join(',');
+    if(pick===ans){ resultEl.textContent='🟢 完全正解！'; }
     else{
-      const wrong = pick.filter(n=>!waits.has(n));
-      const missed = ans.filter(n=>!chosen.has(n));
-      msgEl.textContent = `🔴 不正解  誤選択:${wrong.join(',')||'なし'} / 見逃し:${missed.join(',')||'なし'}`;
+      const chosen=[...selected]; const w=[...waits];
+      const wrong = chosen.filter(n=>!waits.has(n));
+      const missed = w.filter(n=>!selected.has(n));
+      resultEl.textContent = `❌ 不正解 誤選択:${wrong.join(',')||'なし'} / 見逃し:${missed.join(',')||'なし'}`;
     }
-    revealed=true; renderWaits(true);
-    [...answersEl.children].forEach(el=>{
-      const n=+el.dataset.num; el.disabled=true;
-      if(waits.has(n)) el.classList.add('correct');
-      if(!waits.has(n) && el.classList.contains('selected')) el.classList.add('wrong');
+    // 正解ハイライト
+    [...choicesEl.children].forEach(el=>{
+      const n=+el.dataset.num; if(waits.has(n)) el.classList.add('selected'); else if(selected.has(n)) el.style.outline='3px solid #d32f2f';
+      el.disabled=true;
     });
   }
 
-  function next(){ makeQuestion(); drawQuestion(); }
+  // ===== 次の問題 =====
+  function next(){ selected.clear(); resultEl.textContent=''; errEl.textContent=''; makeProblem(); renderHand(); renderChoices(); }
 
-  // イベント
-  submitBtn.addEventListener('click', judge);
-  revealBtn.addEventListener('click', ()=>{
-    if(!revealed){
-      revealed=true; renderWaits(true);
-      [...answersEl.children].forEach(el=>{ el.disabled=true; if(waits.has(+el.dataset.num)) el.classList.add('correct'); });
-      msgEl.textContent='解答を表示しました';
-    }
-  });
-  nextBtn.addEventListener('click', next);
-  window.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ judge(); } if(e.key.toLowerCase()==='n'){ next(); } });
-  allowStd.addEventListener('change', next);
-  allowChiitoi.addEventListener('change', next);
+  // ===== サイズ＆UD =====
+  function applySize(pxOrAuto){
+    if(pxOrAuto==='auto'){ document.documentElement.style.setProperty('--w','clamp(44px, 10vw, 64px)'); sizeLabel.textContent='自動'; }
+    else{ document.documentElement.style.setProperty('--w', pxOrAuto+'px'); sizeLabel.textContent=pxOrAuto+'px'; }
+    document.documentElement.style.setProperty('--h','calc(var(--w) * 1.45)');
+  }
+  sizeRange.addEventListener('input', ()=>{ const v=sizeRange.valueAsNumber||0; if(v<=0) applySize('auto'); else applySize(v); });
+  udToggle.addEventListener('change', ()=>{ document.body.classList.toggle('ud', udToggle.checked); });
 
-  // 初回
+  // ===== ボタン / キー =====
+  btnAnswer.addEventListener('click', judge);
+  btnReveal.addEventListener('click', ()=>{ resultEl.textContent = '正解: ' + [...waits].sort((a,b)=>a-b).map(n=>NUMS[n-1]+'萬').join(' '); });
+  btnNext.addEventListener('click', next);
+  window.addEventListener('keydown', (e)=>{ if(e.key==='Enter') judge(); if(e.key.toLowerCase()==='n') next(); });
+
+  // 初期化
+  applySize('auto');
   next();
 })();
 </script>
