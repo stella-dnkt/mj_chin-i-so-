@@ -19,14 +19,15 @@
     box-shadow: inset 0 0 0 2px #fff, 0 1px 2px rgba(0,0,0,.06);
     display:flex; align-items:center; justify-content:center;
     writing-mode: vertical-rl; text-orientation: upright;
-    font-size: clamp(18px, 5vw, 22px); font-weight: 800; color:#000;
-    user-select: none;
+    font-size: clamp(22px, calc(var(--w) * 0.58), 38px); font-weight: 800; color:#000;
+    line-height: 1; user-select: none;
   }
-  .tile .man{ color:#c62828; }
+  .tile .man{ color:#c62828; font-size:0.95em; }
   .choices .tile{ cursor:pointer; }
   .choices .selected{ outline: 3px solid #1976d2; outline-offset: 2px; }
 
   button{ padding:10px 14px; border-radius:12px; border:1px solid #777; background:#f7f7f7; font-weight:800; font-size:clamp(14px,3.4vw,16px); }
+  #streakRow button{ font-size: clamp(14px, 4vw, 18px); padding: 8px 14px; }
   #result{ margin: .8rem 0; font-weight:800; }
   .controls{ display:flex; gap:12px; align-items:center; justify-content:center; flex-wrap:wrap; margin:6px 0 2px; font-size:clamp(12px,3.2vw,14px); }
 
@@ -36,21 +37,34 @@
   .ud button{ border-color:#000; }
 
   #err{ color:#d32f2f; font-weight:700; font-size:12px; margin-top:6px; }
+  #streakRow{ font-size: clamp(14px, 4vw, 18px); }
+  #streakRow strong{ font-size: 1.1em; }
 </style>
 </head>
 <body>
   <h2>清一色 テンパイ・何待ちクイズ（萬子のみ）</h2>
   <div id="problem" class="board" aria-label="問題の手牌"></div>
+
   <div id="choices" class="choices" aria-label="解答候補"></div>
+
+  <!-- ▼ 連続正解 表示行（追加） -->
+  <div id="streakRow" style="margin-top:4px; font-size:clamp(14px, 4vw, 20px); display:flex; gap:10px; align-items:center; justify-content:center; flex-wrap:wrap; display:flex; gap:10px; align-items:center; justify-content:center; flex-wrap:wrap;">
+    <span>連続正解数：<strong><span id="streakNow">0</span></strong>回 (最高 <strong><span id="streakBest">0</span></strong>回)</span>
+    <button type="button" id="streakReset">正解数リセット</button>
+  </div>
+  <!-- ▲ 連続正解 表示行 -->
+
   <div style="display:flex; gap:8px; justify-content:center; flex-wrap:wrap;">
     <button type="button" id="btnAnswer">解答する (Enter)</button>
     <button type="button" id="btnReveal">答えを表示</button>
     <button type="button" id="btnNext">次の問題 (N)</button>
   </div>
+
   <div class="controls">
     <label>サイズ: <input id="sizeRange" type="range" min="36" max="80" step="1" value="0"> <span id="sizeLabel">自動</span></label>
     <label><input id="udToggle" type="checkbox"> UDモード（高コントラスト）</label>
   </div>
+
   <div id="result" aria-live="polite"></div>
   <div id="err" aria-live="polite"></div>
 
@@ -70,6 +84,10 @@
   const sizeRange = document.getElementById('sizeRange');
   const sizeLabel = document.getElementById('sizeLabel');
   const udToggle  = document.getElementById('udToggle');
+  // ▼ 連続正解UI
+  const streakNowEl  = document.getElementById('streakNow');
+  const streakBestEl = document.getElementById('streakBest');
+  const streakResetBtn = document.getElementById('streakReset');
 
   const NUMS = ['一','二','三','四','五','六','七','八','九'];
 
@@ -77,6 +95,39 @@
   let problemCounts = Array(10).fill(0); // 1..9 合計13
   let waits = new Set();
   let selected = new Set();
+
+  // 連続正解カウンタ
+  let streak = 0;
+  let bestStreak = 0;
+  const LS_STREAK = 'chinitsu_streak_now';
+  const LS_BEST   = 'chinitsu_streak_best';
+
+  function loadStreak(){
+    try{
+      const s = parseInt(localStorage.getItem(LS_STREAK)||'0',10);
+      const b = parseInt(localStorage.getItem(LS_BEST)||'0',10);
+      if(!isNaN(s)) streak = s;
+      if(!isNaN(b)) bestStreak = b;
+    }catch(_){ }
+  }
+  function saveStreak(){
+    try{
+      localStorage.setItem(LS_STREAK, String(streak));
+      localStorage.setItem(LS_BEST,   String(bestStreak));
+    }catch(_){ }
+  }
+  function renderStreak(){
+    if(streakNowEl)  streakNowEl.textContent  = String(streak);
+    if(streakBestEl) streakBestEl.textContent = String(bestStreak);
+  }
+
+  if(streakResetBtn){
+    streakResetBtn.addEventListener('click', ()=>{
+      streak = 0; bestStreak = 0;
+      saveStreak(); renderStreak();
+      resultEl.textContent = '連続正解数をリセットしました';
+    });
+  }
 
   // ===== 牌DOM =====
   function tileNode(n){
@@ -95,7 +146,10 @@
     for(let i=1;i<=9;i++){
       const btn = document.createElement('button'); btn.type='button'; btn.className='tile'; btn.dataset.num=i;
       btn.innerHTML = `${NUMS[i-1]}<span class="man">萬</span>`;
-      btn.addEventListener('click', ()=>{ if(selected.has(i)){ selected.delete(i); btn.classList.remove('selected'); } else { selected.add(i); btn.classList.add('selected'); } });
+      btn.addEventListener('click', ()=>{
+        if(selected.has(i)){ selected.delete(i); btn.classList.remove('selected'); }
+        else{ selected.add(i); btn.classList.add('selected'); }
+      });
       choicesEl.appendChild(btn);
     }
   }
@@ -105,7 +159,11 @@
   function canMentsu(cnt){
     let i=1; while(i<=9 && cnt[i]===0) i++; if(i>9) return true;
     if(cnt[i]>=3){ cnt[i]-=3; if(canMentsu(cnt)){ cnt[i]+=3; return true; } cnt[i]+=3; }
-    if(i<=7 && cnt[i+1]>0 && cnt[i+2]>0){ cnt[i]--; cnt[i+1]--; cnt[i+2]--; if(canMentsu(cnt)){ cnt[i]++; cnt[i+1]++; cnt[i+2]++; return true; } cnt[i]++; cnt[i+1]++; cnt[i+2]++; }
+    if(i<=7 && cnt[i+1]>0 && cnt[i+2]>0){
+      cnt[i]--; cnt[i+1]--; cnt[i+2]--;
+      if(canMentsu(cnt)){ cnt[i]++; cnt[i+1]++; cnt[i+2]++; return true; }
+      cnt[i]++; cnt[i+1]++; cnt[i+2]++;
+    }
     return false;
   }
   function isAgariStd(cnt){ if(sum(cnt)!==14) return false; for(let j=1;j<=9;j++){ if(cnt[j]>=2){ cnt[j]-=2; if(canMentsu(cnt)){ cnt[j]+=2; return true; } cnt[j]+=2; } } return false; }
@@ -127,13 +185,19 @@
   function judge(){
     const pick=[...selected].sort((a,b)=>a-b).join(',');
     const ans=[...waits].sort((a,b)=>a-b).join(',');
-    if(pick===ans){ resultEl.textContent='🟢 完全正解！'; }
-    else{
+    if(pick===ans){
+      resultEl.textContent='🟢 完全正解！';
+      streak++;
+      if(streak>bestStreak) bestStreak=streak;
+    } else {
       const chosen=[...selected]; const w=[...waits];
       const wrong = chosen.filter(n=>!waits.has(n));
       const missed = w.filter(n=>!selected.has(n));
       resultEl.textContent = `❌ 不正解 誤選択:${wrong.join(',')||'なし'} / 見逃し:${missed.join(',')||'なし'}`;
+      streak = 0; // 連続はリセット
     }
+    saveStreak();
+    renderStreak();
     // 正解ハイライト
     [...choicesEl.children].forEach(el=>{
       const n=+el.dataset.num; if(waits.has(n)) el.classList.add('selected'); else if(selected.has(n)) el.style.outline='3px solid #d32f2f';
@@ -160,6 +224,8 @@
   window.addEventListener('keydown', (e)=>{ if(e.key==='Enter') judge(); if(e.key.toLowerCase()==='n') next(); });
 
   // 初期化
+  loadStreak();
+  renderStreak();
   applySize('auto');
   next();
 })();
